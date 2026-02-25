@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EPOS Bridge Dashboard</title>
+    <style>
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 20px;
+        color: #333;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      }
+      h1 {
+        margin-top: 0;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 15px;
+        font-size: 24px;
+        color: #1a1a1a;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .badge {
+        background: #e0e0e0;
+        color: #333;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      .status-ok {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .status-err {
+        background: #ffebee;
+        color: #c62828;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+      .card h2 {
+        margin-top: 0;
+        font-size: 18px;
+        margin-bottom: 15px;
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      li {
+        padding: 8px 12px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      li:hover {
+        background: #f5f5f5;
+      }
+      li:last-child {
+        border-bottom: none;
+      }
+
+      .controls {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 2fr 1fr 1fr;
+      }
+      input,
+      button {
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        font-size: 14px;
+      }
+      button {
+        background: #0078d4;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+      }
+      button:hover {
+        background: #0060aa;
+      }
+
+      #logs {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 15px;
+        border-radius: 8px;
+        height: 200px;
+        overflow-y: auto;
+        font-family: "Consolas", monospace;
+        font-size: 13px;
+        margin: 0;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>
+        EPOS Bridge
+        <span id="status" class="badge">Conectando...</span>
+      </h1>
+
+      <div class="card">
+        <h2>Impresoras del Sistema</h2>
+        <ul id="printerList">
+          <li>Cargando...</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>Pruebas de Hardware</h2>
+        <div class="controls">
+          <input
+            type="text"
+            id="targetPrinter"
+            placeholder="Selecciona una impresora arriba"
+          />
+          <button onclick="testPrint()">Testear Impresión</button>
+          <button onclick="testDrawer()">Abrir Cajón</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Logs en Vivo</h2>
+        <pre id="logs"></pre>
+      </div>
+    </div>
+
+    <script>
+      const log = (msg) => {
+        const el = document.getElementById("logs");
+        const time = new Date().toLocaleTimeString();
+        el.innerHTML += `[${time}] ${msg}\n`;
+        el.scrollTop = el.scrollHeight;
+      };
+
+      const updateStatus = async () => {
+        try {
+          const res = await fetch("/api/status");
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          const el = document.getElementById("status");
+          el.textContent = `Online v${data.version}`;
+          el.className = "badge status-ok";
+        } catch (e) {
+          const el = document.getElementById("status");
+          el.textContent = "Desconectado";
+          el.className = "badge status-err";
+        }
+      };
+
+      const loadPrinters = async () => {
+        try {
+          const res = await fetch("/api/printers");
+          const data = await res.json();
+          const list = document.getElementById("printerList");
+          list.innerHTML = "";
+          if (data.length === 0)
+            list.innerHTML =
+              '<li style="color:#666">No se encontraron impresoras</li>';
+
+          data.forEach((p) => {
+            const li = document.createElement("li");
+            li.innerHTML = `<strong>${p.name}</strong> <span style="font-size:0.8em;color:#666">(${p.port})</span>`;
+            li.onclick = () => {
+              document.getElementById("targetPrinter").value = p.name;
+              log(`Seleccionado: ${p.name}`);
+            };
+            list.appendChild(li);
+          });
+
+          if (
+            data.length > 0 &&
+            !document.getElementById("targetPrinter").value
+          ) {
+            document.getElementById("targetPrinter").value = data[0].name;
+          }
+        } catch (e) {
+          log("Error al cargar lista de impresoras: " + e.message);
+        }
+      };
+
+      const getWS = () => new WebSocket(`wss://${window.location.host}/ws`);
+
+      const testPrint = () => {
+        const printer = document.getElementById("targetPrinter").value;
+        if (!printer) return log("Error: Selecciona una impresora primero");
+
+        log(`Enviando prueba de impresión a: ${printer}`);
+        const ws = getWS();
+
+        ws.onopen = () => {
+          const text = "EPOS Bridge\nTest Print\n----------------\nOK\n\n\n";
+          // Simple workaround for unicode strings to base64 in JS if needed, but ASCII is fine for test
+          const b64 = btoa(text);
+          ws.send(
+            JSON.stringify({ type: "print", printer: printer, data: b64 }),
+          );
+        };
+        ws.onmessage = (e) => log(`Resp: ${e.data}`);
+        ws.onerror = (e) => log(`WS Error`);
+      };
+
+      const testDrawer = () => {
+        const printer = document.getElementById("targetPrinter").value;
+        log(`Enviando señal de cajón a: ${printer || "Default"}`);
+
+        const ws = getWS();
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: "open_drawer", printer: printer }));
+        };
+        ws.onmessage = (e) => log(`Resp: ${e.data}`);
+      };
+
+      // Init
+      updateStatus();
+      loadPrinters();
+      setInterval(updateStatus, 5000);
+    </script>
+  </body>
+</html>
