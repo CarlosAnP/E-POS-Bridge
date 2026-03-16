@@ -37,6 +37,7 @@ dotnet restore
 
 echo Iniciando aplicacion...
 echo NOTA: Si es la primera vez, pedira permisos de Administrador para los certificados.
-set "DOTNET_ENVIRONMENT=Development"
+set "ASPNETCORE_ENVIRONMENT=Development"
+set "ASPNETCORE_URLS=https://localhost:8001"
 dotnet run
 pause
