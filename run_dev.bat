@@ -12,6 +12,9 @@ if %errorLevel% neq 0 (
     exit /b
 )
 
+:: Asegurar que el directorio de trabajo sea la carpeta del script (el proyecto)
+cd /d "%~dp0"
+
 echo.
 echo Verificando instalacion de .NET...
 dotnet --version >nul 2>&1
