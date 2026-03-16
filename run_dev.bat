@@ -1,7 +1,17 @@
 @echo off
-echo ==========================================
-echo  EPOS Bridge - Iniciar en Modo Desarrollo
-echo ==========================================
+:: ==========================================
+::  EPOS Bridge - Iniciar en Modo Desarrollo
+:: ==========================================
+
+:: Comprobar privilegios de Administrador
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [INFO] Se requieren privilegios de Administrador para enlazar el certificado SSL.
+    echo [INFO] Solicitando elevacion UAC...
+    powershell -Command "Start-Process '%~dpnx0' -Verb RunAs"
+    exit /b
+)
+
 echo.
 echo Verificando instalacion de .NET...
 dotnet --version >nul 2>&1
